@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EstudiApp - Asistente y Repaso de Apuntes</title>
+    
+    <!-- Configuración para PWA e Instalación Móvil -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EstudiApp">
+    
+    <!-- Carga de PDF.js para lectura de archivos PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --card-bg: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --secondary: #06b6d4;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #475569;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 1.2rem;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            flex-grow: 1;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .sidebar {
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--primary);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background-color: rgba(99, 102, 241, 0.05);
+            cursor: pointer;
+        }
+
+        .drop-zone input {
+            display: none;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-main);
+            padding: 12px;
+            font-size: 0.95rem;
+            resize: vertical;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            font-size: 1rem;
+        }
+
+        .btn:active {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+        }
+
+        .content-area {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .tabs-header {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            overflow-x: auto;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 10px 14px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
+        .tab-btn.active {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .flashcard-container {
+            perspective: 1000px;
+            width: 100%;
+            max-width: 550px;
+            height: 280px;
+            margin: 20px auto;
+        }
+
+        .flashcard {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+            border-radius: 12px;
+        }
+
+        .flashcard.flipped {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .card-front {
+            background-color: var(--panel-bg);
+            color: var(--text-main);
+        }
+
+        .card-back {
+            background-color: var(--card-bg);
+            color: #a5b4fc;
+            transform: rotateY(180deg);
+        }
+
+        .card-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 550px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .quiz-card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 15px;
+        }
+
+        .quiz-question {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .quiz-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .option-btn {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 12px;
+            border-radius: 6px;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .option-btn.correct {
+            background-color: rgba(16, 185, 129, 0.2);
+            border-color: var(--success);
+            color: #6ee7b7;
+        }
+
+        .option-btn.incorrect {
+            background-color: rgba(239, 68, 68, 0.2);
+            border-color: var(--danger);
+            color: #fca5a5;
+        }
+
+        .fill-item {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }
+
+        .blank-input {
+            background-color: var(--bg-color);
+            border: 1px solid var(--primary);
+            color: var(--secondary);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            width: 120px;
+            text-align: center;
+        }
+
+        .score-board {
+            background-color: rgba(99, 102, 241, 0.1);
+            border: 1px solid var(--primary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .badge {
+            background-color: var(--primary);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 15px;
+            color: var(--secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>📖 EstudiApp</h1>
+        <div id="statusBadge" class="badge">Esperando datos</div>
+    </header>
+
+    <div class="main-layout">
+        <aside class="sidebar">
+            <div>
+                <div class="section-title">1. Cargar PDF</div>
+                <div class="drop-zone" onclick="document.getElementById('pdfInput').click()">
+                    📄 Seleccionar un archivo PDF
+                    <input type="file" id="pdfInput" accept="application/pdf" onchange="handlePDFUpload(event)">
+                </div>
+            </div>
+
+            <div>
+                <div class="section-title">2. O Escribe tus Apuntes</div>
+                <textarea id="notesInput" placeholder="Escribe o pega aquí tu texto de estudio..."></textarea>
+            </div>
+
+            <button class="btn" onclick="processNotes()">
+                ✨ Generar Métodos
+            </button>
+
+            <div id="loading" class="loading-spinner">
+                ⏳ Procesando material...
+            </div>
+        </aside>
+
+        <main class="content-area">
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('quizTab', this)">📝 Cuestionario</button>
+                <button class="tab-btn" onclick="switchTab('flashcardsTab', this)">🎴 Tarjetas</button>
+                <button class="tab-btn" onclick="switchTab('fillTab', this)">🧩 Espacios</button>
+                <button class="tab-btn" onclick="switchTab('summaryTab', this)">🔍 Resumen</button>
+            </div>
+
+            <div id="quizTab" class="tab-content active">
+                <div class="score-board" style="margin-bottom: 15px;">
+                    <span>Cuestionario</span>
+                    <span id="quizScore">Puntos: 0 / 0</span>
+                </div>
+                <div id="quizContainer">
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">Carga tus apuntes o un PDF para generar las preguntas.</p>
+                </div>
+            </div>
+
+            <div id="flashcardsTab" class="tab-content">
+                <div id="flashcardsContainer">
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">Genera tus tarjetas para comenzar el repaso.</p>
+                </div>
+            </div>
+
+            <div id="fillTab" class="tab-content">
+                <div class="score-board" style="margin-bottom: 15px;">
+                    <span>Completar Frases</span>
+                    <button class="btn btn-secondary" style="width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="checkFillAnswers()">Comprobar</button>
+                </div>
+                <div id="fillContainer">
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">Completa las palabras clave del texto.</p>
+                </div>
+            </div>
+
+            <div id="summaryTab" class="tab-content">
+                <div id="summaryContainer" class="quiz-card">
+                    <h3 style="margin-bottom: 10px;">Resumen</h3>
+                    <p style="color: var(--text-muted);">El análisis aparecerá al procesar el texto.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let extractedText = "";
+        let flashcardIndex = 0;
+        let flashcardsData = [];
+        let quizScore = 0;
+        let totalQuestions = 0;
+
+        async function handlePDFUpload(event) {
+            const file = event.target.files[0];
+            if (!file || file.type !== 'application/pdf') return;
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('statusBadge').innerText = "Leyendo PDF...";
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = "";
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(" ");
+                    fullText += pageText + "\n";
+                }
+
+                extractedText = fullText;
+                document.getElementById('notesInput').value = fullText;
+                document.getElementById('statusBadge').innerText = `PDF Cargado (${pdf.numPages} pág.)`;
+            } catch (err) {
+                alert("Error al leer el PDF: " + err.message);
+                document.getElementById('statusBadge').innerText = "Error";
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        function processNotes() {
+            const rawText = document.getElementById('notesInput').value.trim();
+            if (!rawText) {
+                alert("Ingresa un texto o PDF primero.");
+                return;
+            }
+
+            extractedText = rawText;
+            document.getElementById('statusBadge').innerText = "Listo";
+
+            const sentences = extractedText
+                .split(/[.!?]\s+/)
+                .map(s => s.trim())
+                .filter(s => s.length > 20 && s.length < 250);
+
+            if (sentences.length < 2) {
+                alert("Escribe un texto más largo para generar el contenido.");
+                return;
+            }
+
+            generateQuiz(sentences);
+            generateFlashcards(sentences);
+            generateFillInBlanks(sentences);
+            generateSummary(sentences);
+        }
+
+        function generateQuiz(sentences) {
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = "";
+            quizScore = 0;
+            totalQuestions = Math.min(sentences.length, 6);
+            document.getElementById('quizScore').innerText = `Puntos: 0 / ${totalQuestions}`;
+
+            const selectedSentences = sentences.slice(0, totalQuestions);
+
+            selectedSentences.forEach((sentence, idx) => {
+                const words = sentence.split(' ').filter(w => w.length > 4);
+                if (words.length === 0) return;
+
+                const targetWord = words[Math.floor(Math.random() * words.length)].replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, "");
+                const questionText = sentence.replace(new RegExp('\\b' + targetWord + '\\b', 'gi'), '_____');
+
+                const allWords = Array.from(new Set(extractedText.split(/\s+/).map(w => w.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, "")).filter(w => w.length > 4 && w.toLowerCase() !== targetWord.toLowerCase())));
+                
+                let options = [targetWord];
+                while (options.length < 4 && allWords.length > 0) {
+                    const randomWord = allWords.splice(Math.floor(Math.random() * allWords.length), 1)[0];
+                    if (randomWord && !options.includes(randomWord)) {
+                        options.push(randomWord);
+                    }
+                }
+                options.sort(() => Math.random() - 0.5);
+
+                const card = document.createElement('div');
+                card.className = 'quiz-card';
+                card.innerHTML = `
+                    <div class="quiz-question">${idx + 1}. Completa: "${questionText}"</div>
+                    <div class="quiz-options">
+                        ${options.map(opt => `<button class="option-btn" onclick="checkAnswer(this, '${opt}', '${targetWord}')">${opt}</button>`).join('')}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function checkAnswer(btn, selected, correct) {
+            const parent = btn.parentElement;
+            const buttons = parent.querySelectorAll('.option-btn');
+            buttons.forEach(b => b.disabled = true);
+
+            if (selected.toLowerCase() === correct.toLowerCase()) {
+                btn.classList.add('correct');
+                quizScore++;
+            } else {
+                btn.classList.add('incorrect');
+                buttons.forEach(b => {
+                    if (b.innerText.toLowerCase() === correct.toLowerCase()) {
+                        b.classList.add('correct');
+                    }
+                });
+            }
+            document.getElementById('quizScore').innerText = `Puntos: ${quizScore} / ${totalQuestions}`;
+        }
+
+        function generateFlashcards(sentences) {
+            const container = document.getElementById('flashcardsContainer');
+            flashcardsData = [];
+            flashcardIndex = 0;
+
+            sentences.forEach(s => {
+                const parts = s.split(/ es | son | consiste en | se refiere a /i);
+                if (parts.length >= 2) {
+                    flashcardsData.push({ front: parts[0].trim(), back: parts.slice(1).join(" ").trim() });
+                } else {
+                    const words = s.split(' ');
+                    const concept = words.slice(0, 3).join(" ");
+                    const detail = words.slice(3).join(" ");
+                    flashcardsData.push({ front: `¿Qué se dice de: "${concept}"?`, back: detail });
+                }
+            });
+
+            if (flashcardsData.length === 0) return;
+            renderFlashcard();
+        }
+
+        function renderFlashcard() {
+            const container = document.getElementById('flashcardsContainer');
+            const cardData = flashcardsData[flashcardIndex];
+
+            container.innerHTML = `
+                <div class="flashcard-container" onclick="this.querySelector('.flashcard').classList.toggle('flipped')">
+                    <div class="flashcard">
+                        <div class="card-face card-front">
+                            <span class="badge" style="margin-bottom: 15px;">Pregunta</span>
+                            <h3>${cardData.front}</h3>
+                            <small style="margin-top: 15px; color: var(--text-muted);">Toca para voltear</small>
+                        </div>
+                        <div class="card-face card-back">
+                            <span class="badge" style="margin-bottom: 15px; background: var(--secondary);">Respuesta</span>
+                            <p>${cardData.back}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-controls">
+                    <button class="btn btn-secondary" style="width: auto;" onclick="prevCard()" ${flashcardIndex === 0 ? 'disabled' : ''}>← Anterior</button>
+                    <span style="font-size: 0.85rem;">${flashcardIndex + 1} / ${flashcardsData.length}</span>
+                    <button class="btn btn-secondary" style="width: auto;" onclick="nextCard()" ${flashcardIndex === flashcardsData.length - 1 ? 'disabled' : ''}>Siguiente →</button>
+                </div>
+            `;
+        }
+
+        function prevCard() {
+            if (flashcardIndex > 0) {
+                flashcardIndex--;
+                renderFlashcard();
+            }
+        }
+
+        function nextCard() {
+            if (flashcardIndex < flashcardsData.length - 1) {
+                flashcardIndex++;
+                renderFlashcard();
+            }
+        }
+
+        function generateFillInBlanks(sentences) {
+            const container = document.getElementById('fillContainer');
+            container.innerHTML = "";
+
+            const items = sentences.slice(0, 5);
+            items.forEach((sentence, idx) => {
+                const words = sentence.split(' ');
+                if (words.length < 5) return;
+
+                const longWords = words.filter(w => w.length > 5);
+                const target = longWords[Math.floor(Math.random() * longWords.length)] || words[2];
+                const cleanTarget = target.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, "");
+
+                const sentenceWithBlank = sentence.replace(cleanTarget, `<input type="text" class="blank-input" data-answer="${cleanTarget}">`);
+
+                const div = document.createElement('div');
+                div.className = 'fill-item';
+                div.innerHTML = `<b>${idx + 1}.</b> ${sentenceWithBlank}`;
+                container.appendChild(div);
+            });
+        }
+
+        function checkFillAnswers() {
+            const inputs = document.querySelectorAll('.blank-input');
+            let correctCount = 0;
+
+            inputs.forEach(input => {
+                const userAns = input.value.trim().toLowerCase();
+                const realAns = input.dataset.answer.toLowerCase();
+
+                if (userAns === realAns) {
+                    input.style.borderColor = 'var(--success)';
+                    input.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+                    correctCount++;
+                } else {
+                    input.style.borderColor = 'var(--danger)';
+                    input.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                }
+            });
+
+            alert(`Aciertos: ${correctCount} de ${inputs.length}`);
+        }
+
+        function generateSummary(sentences) {
+            const container = document.getElementById('summaryContainer');
+            const words = extractedText.toLowerCase().match(/\b[a-záéíóúñ]{5,}\b/g) || [];
+            
+            const freqMap = {};
+            words.forEach(w => {
+                if (!['sobre', 'entre', 'donde', 'hasta', 'desde', 'cuando', 'porque'].includes(w)) {
+                    freqMap[w] = (freqMap[w] || 0) + 1;
+                }
+            });
+
+            const sortedWords = Object.entries(freqMap)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6)
+                .map(item => `<span class="badge" style="margin: 3px; display: inline-block;">${item[0]} (${item[1]})</span>`)
+                .join('');
+
+            container.innerHTML = `
+                <h3>🔍 Palabras Clave</h3>
+                <div style="margin: 12px 0;">${sortedWords || 'Sin suficientes palabras.'}</div>
+                <hr style="border-color: var(--border); margin: 12px 0;">
+                <p><b>Oraciones:</b> ${sentences.length}</p>
+                <p><b>Palabras:</b> ${words.length}</p>
+            `;
+        }
+
+        // Registrar Service Worker para permitir la instalación
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registrado correctamente', reg))
+                    .catch(err => console.log('Error registrando SW', err));
+            });
+        }
+    </script>
+</body>
+</html>
